@@ -62,12 +62,15 @@ class _MyHomePageState extends State<MyHomePage> {
         p3 = Point(1, 1),
         p4 = Point(-1, 1),
         p5 = Point(-2, 0);
-    sector.walls.add(Wall(line: LineSeg(p1, p0)));
-    sector.walls.add(Wall(line: LineSeg(p2, p1)));
-    sector.walls.add(Wall(line: LineSeg(p3, p2)));
-    sector.walls.add(Wall(line: LineSeg(p4, p3)));
-    sector.walls.add(Wall(line: LineSeg(p5, p4)));
-    sector.walls.add(Wall(line: LineSeg(p0, p5)));
+    Brick brick = Brick(height: .33, texIndex: -1);
+    Brick brick2 = Brick(height: 0.67, texIndex: 0xffff00ff);
+    List<Brick> bricks = [brick, brick2];
+    sector.walls.add(Wall(line: LineSeg(p1, p0))..bricks.addAll(bricks));
+    sector.walls.add(Wall(line: LineSeg(p3, p1))..bricks.addAll(bricks));
+    //sector.walls.add(Wall(line: LineSeg(p3, p2))..bricks.addAll(bricks));
+    sector.walls.add(Wall(line: LineSeg(p4, p3))..bricks.addAll(bricks));
+    sector.walls.add(Wall(line: LineSeg(p0, p4))..bricks.addAll(bricks));
+    //sector.walls.add(Wall(line: LineSeg(p0, p5))..bricks.addAll(bricks));
     sectors.add(sector);
 
     renderer = PerspRenderer(world: world, camera: camera);
@@ -80,8 +83,10 @@ class _MyHomePageState extends State<MyHomePage> {
     DateTime start = DateTime.now();
     while (true) {
       DateTime lastCall = DateTime.now();
-      camera.setYaw(camera.yaw + 0.1);
-      camera.pitch = 0.5 * sin(_counter / 40);
+      camera.setYaw(camera.yaw + 0.01);
+      camera.pitch = 0.5 * sin(_counter / 12);
+      camera.position = Point(cos(_counter / 20), sin(_counter / 17)) * 0.25;
+      camera.z = 0.5 + 0.2 * sin(_counter / 15 + 0.2);
       renderer.camera = camera;
       await view.renderer?.render();
       setState(() {});

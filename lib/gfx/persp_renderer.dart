@@ -194,47 +194,96 @@ class PerspRenderer extends Renderer {
                   (currentSector.ceil - camera.z) / p1.y))
           .toInt();
 
+      List<QueueEntry?> portals = List.filled(wall.bricks.length, null);
+      for (int i = 0; i < wall.bricks.length; i++) {
+        Brick brick = wall.bricks[i];
+        if (brick.portalIndex != -1) {
+          portals[i] = QueueEntry(
+              sector: brick.portalIndex,
+              x0: screenX0,
+              x1: screenX1,
+              floor: Uint16List(screenX1 - screenX0),
+              ceil: Uint16List(screenX1 - screenX0));
+        }
+      }
+
       for (int x = screenX0; x < screenX1; x++) {
         if (x - screenX0 < 0 || x - screenX0 >= width) continue;
         int fy = (fy0 + (fy1 - fy0) * (x - screenX0) / (screenX1 - screenX0))
             .toInt();
         int cy = (cy0 + (cy1 - cy0) * (x - screenX0) / (screenX1 - screenX0))
             .toInt();
-        int oldFy = floor[x];
-        int oldCy = ceil[x];
+        double perpDist = (currentSector.floor - camera.z) /
+            (fy / height - camera.z - camera.pitch / 2);
+        double worldX = (x - halfWidth) * xAdjustRecip;
+        Point worldSpace = Point(worldX, 1) * perpDist;
+        worldSpace = worldSpace.rotated(camera.cosYaw, camera.sinYaw);
+        int r = (worldSpace.x * 0xff ~/ 2) & 0xff;
+        int g = (worldSpace.y * 0xff ~/ 3) & 0xff;
+        double b = currentSector.floor;
+        double stepB = (currentSector.ceil - b) / (cy - fy);
+        int oldFy = portal.floor[x - screenX0];
+        int oldCy = portal.ceil[x - screenX0];
         floorFlat.startY[x] = max(0, min(height, oldFy));
         floorFlat.endY[x] = max(0, min(height, fy));
-        /*for (int y = oldFy; y < fy; y++) {
-          int color = wallnum % 2 == 0 ? 0xff0000ff : 0xff0000ff;
-          drawPoint(x, y, color);
-        }*/
-        for (int y = fy; y < cy; y++) {
-          int color = wallnum % 2 == 0 ? 0x0000ffff : 0x00ff00ff;
-          drawPoint(x, y, color);
+
+        // Iterate over every brick
+        int ySoFar = fy;
+        for (int i = 0; i < wall.bricks.length && ySoFar < cy; i++) {
+          Brick brick = wall.bricks[i];
+          int nextY = (ySoFar + (cy - fy) * brick.height).toInt();
+
+          int startY = max(ySoFar, max(fy, oldFy));
+          int endY = min(nextY, min(cy, oldCy));
+
+          // Render wall
+          if (brick.texIndex != -1) {
+            for (int y = startY; y < endY; y++) {
+              drawPoint(x, y, brick.texIndex);
+            }
+          }
+
+          // Queue portal
+          if (portals[i] != null) {
+            portals[i]!.floor[x - screenX0] = startY;
+            portals[i]!.ceil[x - screenX0] = endY;
+          }
+
+          ySoFar = max(ySoFar, nextY);
         }
+        /*for (int y = fy; y < cy; y++) {
+          int blue = (b * 0xff).toInt() & 0xff;
+          int color = (r << 24) | (g << 16) | (blue << 8) | 0xff;
+          if (y >= oldFy && y < oldCy) {
+            drawPoint(x, y, color);
+          }
+          b += stepB;
+        }*/
         ceilFlat.startY[x] = max(0, min(height, cy));
         ceilFlat.endY[x] = max(0, min(height, oldCy));
-        /*for (int y = cy; y < oldCy; y++) {
-          int color = wallnum % 2 == 0 ? 0xff0000ff : 0xff0000ff;
-          drawPoint(x, y, color);
-        }*/
       }
     }
-    drawSpans(floorFlat, camera);
-    drawSpans(ceilFlat, camera);
+    drawSpans(floorFlat, camera, xAdjustRecip);
+    drawSpans(ceilFlat, camera, xAdjustRecip);
   }
 
-  void drawSpans(Flat flat, Camera camera) {
+  void drawSpans(Flat flat, Camera camera, double xAdjustRecip) {
     int lastStartY = flat.startY[0], lastEndY = flat.endY[0];
     // Initialize spans
+    double worldX = -halfWidth * xAdjustRecip;
     for (int y = lastStartY; y < lastEndY; y++) {
       SpanCache newSpan = spanCache[y];
       double perpDist =
           (flat.z - camera.z) / (y / height - camera.pitch / 2 - camera.z);
       newSpan.perpDist = perpDist;
       newSpan.lastX = 0;
+      Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+      uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+      newSpan.u0 = uv.x;
+      newSpan.v0 = uv.y;
     }
     for (int x = 1; x < width; x++) {
+      worldX += xAdjustRecip;
       if (flat.startY[x] < lastStartY) {
         for (int y = flat.startY[x]; y < lastStartY; y++) {
           SpanCache newSpan = spanCache[y];
@@ -242,6 +291,10 @@ class PerspRenderer extends Renderer {
               (flat.z - camera.z) / (y / height - camera.pitch / 2 - camera.z);
           newSpan.perpDist = perpDist;
           newSpan.lastX = x;
+          Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+          uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+          newSpan.u0 = uv.x;
+          newSpan.v0 = uv.y;
         }
       }
       if (flat.endY[x] > lastEndY) {
@@ -251,25 +304,59 @@ class PerspRenderer extends Renderer {
               (flat.z - camera.z) / (y / height - camera.pitch / 2 - camera.z);
           newSpan.perpDist = perpDist;
           newSpan.lastX = x;
+          Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+          uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+          newSpan.u0 = uv.x;
+          newSpan.v0 = uv.y;
         }
       }
       if (flat.startY[x] > lastStartY) {
         for (int y = lastStartY; y < flat.startY[x]; y++) {
           SpanCache span = spanCache[y];
-          int color = (exp(-span.perpDist) * 0xff).toInt();
-          int rgba = (color * 0x01010000) + 0xff;
+          double perpDist = span.perpDist;
+          Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+          uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+          double u1 = uv.x;
+          double v1 = uv.y;
+          double uStep = (u1 - span.u0) / (x - span.lastX);
+          double vStep = (v1 - span.v0) / (x - span.lastX);
+          double u = span.u0, v = span.v0;
+          int red = (exp(-span.perpDist) * 0xff).toInt();
           for (int ix = span.lastX; ix < x; ix++) {
+            int green = (u * 0xff).toInt() & 0xff;
+            int blue = (v * 0xff).toInt() & 0xff;
+            int rgba = (red * 0x01000000) +
+                (green * 0x00010000) +
+                (blue * 0x00000100) +
+                0xff;
             drawPoint(ix, y, rgba);
+            u += uStep;
+            v += vStep;
           }
         }
       }
       if (flat.endY[x] < lastEndY) {
         for (int y = flat.endY[x]; y < lastEndY; y++) {
           SpanCache span = spanCache[y];
-          int color = (exp(-span.perpDist) * 0xff).toInt();
-          int rgba = (color * 0x01010000) + 0xff;
+          double perpDist = span.perpDist;
+          Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+          uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+          double u1 = uv.x;
+          double v1 = uv.y;
+          double uStep = (u1 - span.u0) / (x - span.lastX);
+          double vStep = (v1 - span.v0) / (x - span.lastX);
+          double u = span.u0, v = span.v0;
+          int red = (exp(-span.perpDist) * 0xff).toInt();
           for (int ix = span.lastX; ix < x; ix++) {
+            int green = (u * 0xff).toInt() & 0xff;
+            int blue = (v * 0xff).toInt() & 0xff;
+            int rgba = (red * 0x01000000) +
+                (green * 0x00010000) +
+                (blue * 0x00000100) +
+                0xff;
             drawPoint(ix, y, rgba);
+            u += uStep;
+            v += vStep;
           }
         }
       }
@@ -277,12 +364,28 @@ class PerspRenderer extends Renderer {
       lastEndY = flat.endY[x];
     }
     // Terminate remaining spans
+    worldX += xAdjustRecip;
     for (int y = lastStartY; y < lastEndY; y++) {
       SpanCache span = spanCache[y];
-      int color = (exp(-span.perpDist) * 0xff).toInt();
-      int rgba = (color * 0x01010000) + 0xff;
+      double perpDist = span.perpDist;
+      Point uv = Point(worldX * perpDist, perpDist) + camera.position;
+      uv = uv.rotated(camera.cosYaw, camera.sinYaw);
+      double u1 = uv.x;
+      double v1 = uv.y;
+      double uStep = (u1 - span.u0) / (width - span.lastX);
+      double vStep = (v1 - span.v0) / (width - span.lastX);
+      double u = span.u0, v = span.v0;
+      int red = (exp(-span.perpDist) * 0xff).toInt();
       for (int x = span.lastX; x < width; x++) {
+        int green = (u * 0xff).toInt() & 0xff;
+        int blue = (v * 0xff).toInt() & 0xff;
+        int rgba = (red * 0x01000000) +
+            (green * 0x00010000) +
+            (blue * 0x00000100) +
+            0xff;
         drawPoint(x, y, rgba);
+        u += uStep;
+        v += vStep;
       }
     }
   }
