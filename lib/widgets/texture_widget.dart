@@ -9,6 +9,7 @@ class Renderer {
   SoftwareTexture? _texture;
   Uint8List? _pixels;
   int _bgColor = 0x000000ff;
+  late int width, height;
 
   bool get ready => _pixels != null;
 
@@ -18,6 +19,8 @@ class Renderer {
     _texture = texture;
     _pixels = texture.buffer;
     _bgColor = bgColor ?? _bgColor;
+    width = texture.width;
+    height = texture.height;
   }
 
   /// Call in order to render to this renderer's texture.
@@ -27,7 +30,7 @@ class Renderer {
     if (!ready) {
       return;
     }
-    if (await _render()) {
+    if (await render_impl()) {
       await _texture!.draw();
     }
   }
@@ -35,7 +38,7 @@ class Renderer {
   /// Override this method in derived classes to control rendering logic.
   /// By default, the parent class just clears the buffer.
   /// If this method returns false, the redraw call in render is skipped.
-  Future<bool> _render() async {
+  Future<bool> render_impl() async {
     clear(_bgColor);
     return true;
   }
@@ -52,7 +55,11 @@ class Renderer {
   }
 
   void drawPoint(int x, int y, int color) {
-    if (!ready || x < 0 || y < 0 || x >= _texture!.width || y >= _texture!.height) {
+    if (!ready ||
+        x < 0 ||
+        y < 0 ||
+        x >= _texture!.width ||
+        y >= _texture!.height) {
       return;
     }
     _drawPoint(x, y, color);
@@ -118,7 +125,6 @@ class Renderer {
     }
     return;
   }
-
 }
 
 class TextureWidget extends StatefulWidget {
@@ -126,14 +132,18 @@ class TextureWidget extends StatefulWidget {
   final Renderer? renderer;
   final int bgColor;
 
-  const TextureWidget({required this.width, required this.height, this.renderer, this.bgColor = 0x000000ff, super.key});
+  const TextureWidget(
+      {required this.width,
+      required this.height,
+      this.renderer,
+      this.bgColor = 0x000000ff,
+      super.key});
 
   @override
   State<TextureWidget> createState() => _TextureWidgetState();
 }
 
 class _TextureWidgetState extends State<TextureWidget> {
-
   SoftwareTexture? _texture;
   int frames = 0;
 
@@ -151,7 +161,8 @@ class _TextureWidgetState extends State<TextureWidget> {
   }
 
   Future<void> initTexture() async {
-    SoftwareTexture tex = SoftwareTexture(Size(widget.width.toDouble(), widget.height.toDouble()));
+    SoftwareTexture tex = SoftwareTexture(
+        Size(widget.width.toDouble(), widget.height.toDouble()));
     await tex.generateTexture().then((void v) {
       _texture = tex;
       widget.renderer?.setTexture(tex, widget.bgColor);
@@ -159,11 +170,15 @@ class _TextureWidgetState extends State<TextureWidget> {
         setState(() {});
       }
     });
-
   }
 
   @override
   Widget build(BuildContext context) {
-    return _texture == null ? Container(color: Colors.blue) : Texture(textureId: _texture!.textureId, filterQuality: FilterQuality.none,);
+    return _texture == null
+        ? Container(color: Colors.blue)
+        : Texture(
+            textureId: _texture!.textureId,
+            filterQuality: FilterQuality.none,
+          );
   }
 }
