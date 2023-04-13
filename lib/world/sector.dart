@@ -14,9 +14,9 @@ class Wall {
   /// Parametric representation of the line segment of this wall.
   /// Its endpoints are at t = 0 and t = 1.
   final LineSeg line;
-  final List<Brick> bricks = <Brick>[];
+  final List<Brick> bricks;
 
-  Wall({required this.line});
+  Wall({required this.line, required this.bricks});
 }
 
 class Brick {

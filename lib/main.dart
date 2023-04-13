@@ -1,14 +1,16 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_doomo/gfx/persp_renderer.dart';
 import 'package:flutter_doomo/widgets/texture_widget.dart';
 import 'package:flutter_doomo/world/camera.dart';
+import 'package:flutter_doomo/world/parser.dart';
 import 'package:flutter_doomo/world/sector.dart';
 import 'package:flutter_doomo/world/space.dart';
 import 'package:flutter_doomo/world/world.dart';
 
-double _kTargetFps = 30;
+double _kTargetFps = 12;
 
 void main() {
   runApp(const MyApp());
@@ -44,16 +46,20 @@ class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   double _fps = 0;
   late TextureWidget view;
-  final World world = World();
+  World? world;
   Camera camera = Camera();
   late PerspRenderer renderer;
 
-  @override
-  void initState() {
-    super.initState();
+  void loadWorld() async {
+    String worldData =
+        await rootBundle.loadString('assets/world/test_world.txt');
+    StringReader reader = StringReader(worldData);
+    Tokenizer tokenizer = AsciiTokenizer(reader.nextByte);
+    WorldLoader loader = WorldLoader(tokenizer);
+    world = loader.loadWorld();
 
     // Test world
-    List<Sector> sectors = world.sectors;
+    /*List<Sector> sectors = world.sectors;
     // Square walls in [-1, 1]
     Sector sector = Sector(ceil: 0.75, floor: 0.25);
     Point p0 = Point(-1, -1),
@@ -65,25 +71,31 @@ class _MyHomePageState extends State<MyHomePage> {
     Brick brick = Brick(height: .33, texIndex: -1);
     Brick brick2 = Brick(height: 0.67, texIndex: 0xffff00ff);
     List<Brick> bricks = [brick, brick2];
-    sector.walls.add(Wall(line: LineSeg(p1, p0))..bricks.addAll(bricks));
-    sector.walls.add(Wall(line: LineSeg(p3, p1))..bricks.addAll(bricks));
-    //sector.walls.add(Wall(line: LineSeg(p3, p2))..bricks.addAll(bricks));
-    sector.walls.add(Wall(line: LineSeg(p4, p3))..bricks.addAll(bricks));
-    sector.walls.add(Wall(line: LineSeg(p0, p4))..bricks.addAll(bricks));
-    //sector.walls.add(Wall(line: LineSeg(p0, p5))..bricks.addAll(bricks));
-    sectors.add(sector);
+    sector.walls.add(Wall(line: LineSeg(p1, p0), bricks: bricks));
+    sector.walls.add(Wall(line: LineSeg(p3, p1), bricks: bricks));
+    //sector.walls.add(Wall(line: LineSeg(p3, p2), bricks: bricks));
+    sector.walls.add(Wall(line: LineSeg(p4, p3), bricks: bricks));
+    sector.walls.add(Wall(line: LineSeg(p0, p4), bricks: bricks));
+    //sector.walls.add(Wall(line: LineSeg(p0, p5), bricks: bricks));
+    sectors.add(sector);*/
 
-    renderer = PerspRenderer(world: world, camera: camera);
+    renderer = PerspRenderer(world: world!, camera: camera);
     view = TextureWidget(
         width: 300, height: 300, renderer: renderer, bgColor: 0xa08010ff);
     loop();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadWorld();
   }
 
   Future<void> loop() async {
     DateTime start = DateTime.now();
     while (true) {
       DateTime lastCall = DateTime.now();
-      camera.setYaw(camera.yaw + 0.01);
+      camera.setYaw(sin(_counter / 20) * 0.2);
       camera.pitch = 0.5 * sin(_counter / 12);
       camera.position = Point(cos(_counter / 20), sin(_counter / 17)) * 0.25;
       camera.z = 0.5 + 0.2 * sin(_counter / 15 + 0.2);
@@ -139,7 +151,8 @@ class _MyHomePageState extends State<MyHomePage> {
               'FPS: ${_fps.toInt()} Yaw: ${camera.yaw}',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            Container(width: 500, height: 500, child: view),
+            Container(
+                width: 500, height: 500, child: world == null ? null : view),
           ],
         ),
       ),
